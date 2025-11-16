@@ -49,7 +49,9 @@ export const getBudget = async (req, res) => {
     });
 
     if (!budget) {
-      return res.status(404).json(new ApiError(404, "Budget not found"));
+      return res
+        .status(200)
+        .json(new Response(200, { addNewBudget: true }, "Budget not found"));
     }
 
     return res
