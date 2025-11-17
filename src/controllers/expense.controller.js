@@ -291,44 +291,81 @@ export const exportExpensesPDF = async (req, res) => {
     const user = req.user;
     const { start, end } = req.query;
 
+    // Validation
     if (!start || !end) {
-      return res
-        .status(400)
-        .json(new ApiError(400, "Start date and End date required"));
+      return res.status(400).json({
+        success: false,
+        message: "Start date and end date are required",
+      });
     }
 
     const startDate = new Date(start);
     const endDate = new Date(end);
-    endDate.setHours(23, 59, 59);
+
+    // Validate dates
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format",
+      });
+    }
+
+    endDate.setHours(23, 59, 59, 999);
 
     // Fetch only logged-in user's expenses
     const expenses = await Expense.find({
       user: user._id,
       date: { $gte: startDate, $lte: endDate },
-    }).populate("category");
+    })
+      .populate("category")
+      .sort({ date: 1 }); // Sort by date ascending
 
     // Create PDF
-    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    const doc = new PDFDocument({
+      margin: 40,
+      size: "A4",
+      bufferPages: true,
+    });
 
+    // Set response headers
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=expenses_${start}_${end}.pdf`
     );
+    res.setHeader("Cache-Control", "no-cache");
 
+    // Pipe the PDF to response
     doc.pipe(res);
 
-    // TITLE
-    doc.fontSize(20).text("Expense Report", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(12).text(`From: ${startDate.toDateString()}`);
-    doc.text(`To:   ${endDate.toDateString()}`);
-    doc.moveDown();
+    // TITLE & HEADER
+    doc
+      .fontSize(22)
+      .font("Helvetica-Bold")
+      .text("Expense Report", { align: "center" });
+
+    doc.moveDown(0.5);
+
+    doc
+      .fontSize(11)
+      .font("Helvetica")
+      .text(
+        `Period: ${startDate.toDateString()} to ${endDate.toDateString()}`,
+        {
+          align: "center",
+        }
+      );
+
+    doc.fontSize(10).text(`Generated on: ${new Date().toLocaleString()}`, {
+      align: "center",
+    });
+
+    doc.moveDown(1.5);
 
     // TABLE HEADER
-    const tableTop = 150;
+    const tableTop = doc.y;
 
-    doc.fontSize(12);
+    doc.fontSize(11).font("Helvetica-Bold");
     drawTableRow(
       doc,
       tableTop,
@@ -336,14 +373,39 @@ export const exportExpensesPDF = async (req, res) => {
       "Date",
       "Description",
       "Category",
-      "Amount"
+      "Amount (₹)"
     );
+
     drawLine(doc, tableTop + 20);
 
     // TABLE ROWS
     let y = tableTop + 30;
+    let totalAmount = 0;
+
+    doc.font("Helvetica").fontSize(10);
 
     expenses.forEach((exp, i) => {
+      // Check if we need a new page
+      if (y > 720) {
+        doc.addPage();
+        y = 50;
+
+        // Redraw header on new page
+        doc.fontSize(11).font("Helvetica-Bold");
+        drawTableRow(
+          doc,
+          y,
+          "#",
+          "Date",
+          "Description",
+          "Category",
+          "Amount (₹)"
+        );
+        drawLine(doc, y + 20);
+        y += 30;
+        doc.font("Helvetica").fontSize(10);
+      }
+
       drawTableRow(
         doc,
         y,
@@ -351,41 +413,99 @@ export const exportExpensesPDF = async (req, res) => {
         new Date(exp.date).toLocaleDateString("en-IN"),
         exp.description || "—",
         exp.category?.name || "N/A",
-        exp.amount + "/-"
+        `₹${exp.amount.toFixed(2)}`
       );
 
+      totalAmount += exp.amount;
       y += 25;
-
-      // new page if end reached
-      if (y > 750) {
-        doc.addPage();
-        y = 50;
-      }
     });
+
+    // SUMMARY
+    if (expenses.length > 0) {
+      y += 10;
+      drawLine(doc, y);
+      y += 10;
+
+      doc
+        .fontSize(12)
+        .font("Helvetica-Bold")
+        .text(`Total Expenses: ₹${totalAmount.toFixed(2)}`, 350, y, {
+          width: 200,
+          align: "right",
+        });
+
+      doc
+        .fontSize(10)
+        .font("Helvetica")
+        .text(`Total Transactions: ${expenses.length}`, 350, y + 20, {
+          width: 200,
+          align: "right",
+        });
+    } else {
+      doc
+        .fontSize(12)
+        .font("Helvetica")
+        .text("No expenses found for the selected period.", {
+          align: "center",
+        });
+    }
+
+    // Add footer with page numbers
+    const pages = doc.bufferedPageRange();
+    for (let i = 0; i < pages.count; i++) {
+      doc.switchToPage(i);
+      doc
+        .fontSize(8)
+        .font("Helvetica")
+        .text(`Page ${i + 1} of ${pages.count}`, 0, doc.page.height - 50, {
+          align: "center",
+        });
+    }
 
     doc.end();
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "PDF generation failed" });
+    console.error("PDF generation error:", err);
+
+    // Check if headers already sent
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "PDF generation failed",
+        error: process.env.NODE_ENV === "development" ? err.message : undefined,
+      });
+    }
   }
 };
 
 // ------------------------------------------------
-// Helper: Draw Row
+// Helper: Draw Table Row
 // ------------------------------------------------
 function drawTableRow(doc, y, col1, col2, col3, col4, col5) {
+  const colX = {
+    num: 40,
+    date: 70,
+    desc: 150,
+    category: 340,
+    amount: 470,
+  };
+
   doc
-    .fontSize(10)
-    .text(col1, 40, y) // #
-    .text(col2, 70, y) // Date
-    .text(col3, 150, y, { width: 180 }) // Description
-    .text(col4, 340, y, { width: 120 }) // Category
-    .text(col5, 470, y); // Amount
+    .text(col1, colX.num, y, { width: 25 }) // #
+    .text(col2, colX.date, y, { width: 75 }) // Date
+    .text(col3, colX.desc, y, { width: 180, ellipsis: true }) // Description
+    .text(col4, colX.category, y, { width: 120, ellipsis: true }) // Category
+    .text(col5, colX.amount, y, { width: 80, align: "right" }); // Amount
 }
 
 // ------------------------------------------------
-// Helper: Line under header
+// Helper: Draw Line
 // ------------------------------------------------
 function drawLine(doc, y) {
-  doc.strokeColor("#aaaaaa").lineWidth(1).moveTo(40, y).lineTo(550, y).stroke();
+  doc
+    .strokeColor("#cccccc")
+    .lineWidth(0.5)
+    .moveTo(40, y)
+    .lineTo(550, y)
+    .stroke()
+    .strokeColor("#000000"); // Reset color
 }

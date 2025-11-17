@@ -2,7 +2,7 @@ import { Category } from "../models/category.model.js";
 
 const CATEGORY_DATA = [
   { code: "transport", name: "Transport" },
-  { code: "household", name: "Home" },
+  { code: "household", name: "House Hold" },
   { code: "food", name: "Food & Dining" },
   { code: "shopping", name: "Shopping" },
   { code: "bills", name: "Bills & Utilities" },
