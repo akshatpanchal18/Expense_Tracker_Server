@@ -1,4 +1,5 @@
 export const getProfile = async (req, res) => {
+  console.log("Get Profile called");
   try {
     if (!user) {
       return res.status(401).json({ message: "Unauthorized" });
