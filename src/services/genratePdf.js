@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import path from "path";
 
 export const generateExpensesPDF = async (expenses, startDate, endDate) => {
   return new Promise((resolve, reject) => {
@@ -9,23 +10,27 @@ export const generateExpensesPDF = async (expenses, startDate, endDate) => {
         bufferPages: true,
       });
 
+      const fontPath = path.join(
+        process.cwd(),
+        "src/assets/fonts/NotoSans.ttf"
+      );
+
+      doc.registerFont("NotoSans", fontPath);
+      doc.font("NotoSans");
+
       let buffers = [];
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => {
-        const pdfData = Buffer.concat(buffers);
-        resolve(pdfData);
+        resolve(Buffer.concat(buffers));
       });
 
-      // HEADER
-      doc
-        .fontSize(22)
-        .font("Helvetica-Bold")
-        .text("Expense Report", { align: "center" });
-      doc.moveDown(1);
+      // ===== HEADER =====
+      doc.fontSize(22).text("Expense Report", { align: "center" });
+
+      doc.moveDown(0.5);
 
       doc
         .fontSize(11)
-        .font("Helvetica")
         .text(
           `Period: ${startDate.toDateString()} to ${endDate.toDateString()}`,
           { align: "center" }
@@ -33,9 +38,10 @@ export const generateExpensesPDF = async (expenses, startDate, endDate) => {
 
       doc.moveDown(2);
 
-      // TABLE HEADER
+      // ===== TABLE HEADER =====
       const tableTop = doc.y;
-      doc.font("Helvetica-Bold");
+      doc.fontSize(11);
+
       drawTableRow(
         doc,
         tableTop,
@@ -45,18 +51,20 @@ export const generateExpensesPDF = async (expenses, startDate, endDate) => {
         "Category",
         "Amount (₹)"
       );
+
       drawLine(doc, tableTop + 20);
 
-      // DATA ROWS
+      // ===== DATA ROWS =====
       let y = tableTop + 30;
       let total = 0;
-      doc.font("Helvetica").fontSize(10);
+
+      doc.fontSize(10);
 
       expenses.forEach((exp, i) => {
         if (y > 720) {
           doc.addPage();
           y = 50;
-          doc.font("Helvetica-Bold");
+
           drawTableRow(
             doc,
             y,
@@ -84,26 +92,31 @@ export const generateExpensesPDF = async (expenses, startDate, endDate) => {
         y += 25;
       });
 
-      doc
-        .font("Helvetica-Bold")
-        .text(`Total: ₹${total.toFixed(2)}`, 350, y + 15);
+      doc.fontSize(12).text(`Total: ₹${total.toFixed(2)}`, 360, y + 20);
 
       doc.end();
-    } catch (err) {
-      reject(err);
+    } catch (error) {
+      reject(error);
     }
   });
 };
 
-// Helpers
+// ===== Helpers =====
 function drawTableRow(doc, y, col1, col2, col3, col4, col5) {
-  const colX = { num: 40, date: 80, desc: 160, category: 340, amount: 470 };
+  const colX = {
+    num: 40,
+    date: 80,
+    desc: 150,
+    category: 330,
+    amount: 450,
+  };
+
   doc
     .text(col1, colX.num, y, { width: 30 })
-    .text(col2, colX.date, y, { width: 80 })
-    .text(col3, colX.desc, y, { width: 180 })
-    .text(col4, colX.category, y, { width: 120 })
-    .text(col5, colX.amount, y, { width: 80, align: "right" });
+    .text(col2, colX.date, y, { width: 70 })
+    .text(col3, colX.desc, y, { width: 170 })
+    .text(col4, colX.category, y, { width: 110 })
+    .text(col5, colX.amount, y, { width: 90, align: "right" });
 }
 
 function drawLine(doc, y) {
