@@ -10,10 +10,7 @@ export const generateExpensesPDF = async (expenses, startDate, endDate) => {
         bufferPages: true,
       });
 
-      const fontPath = path.join(
-        process.cwd(),
-        "src/assets/fonts/NotoSans.ttf"
-      );
+      const fontPath = path.join(process.cwd(), "assets/fonts/NotoSans.ttf");
 
       doc.registerFont("NotoSans", fontPath);
       doc.font("NotoSans");
