@@ -26,7 +26,12 @@ import authRoutes from "./routes/auth.route.js";
 import sharedRoutes from "./routes/shared.route.js";
 import userRoutes from "./routes/user.route.js";
 import expenseRoutes from "./routes/expense.route.js";
-
+app.get("/awake", (_req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is running",
+  });
+});
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/shared", sharedRoutes);
 app.use("/api/v1/user", userRoutes);
